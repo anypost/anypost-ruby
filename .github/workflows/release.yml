@@ -1,0 +1,28 @@
+name: Release
+
+# Publishes to RubyGems on a version tag (e.g. v0.1.0). Bump VERSION in
+# lib/anypost/version.rb, tag the commit, and push.
+#
+# Uses RubyGems Trusted Publishing (OIDC) — no API token. Configure the gem's
+# trusted publisher on rubygems.org to allow this repository + workflow, and
+# create a GitHub Environment named `rubygems`.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    environment: rubygems
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Build and push to RubyGems
+        uses: rubygems/release-gem@v1
