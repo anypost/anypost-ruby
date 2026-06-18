@@ -118,4 +118,24 @@ RSpec.describe "resources" do
     expect(server.last_request.query["event_type"]).to eq("email.delivered")
     expect(server.last_request.query["tags"]).to eq("welcome,onboarding")
   end
+
+  it "exposes the bot label on a proxied open" do
+    server.stub(:get, "/v1/events", body: {
+      data: [
+        {id: "evt_bot", type: "email.opened", tracking: {bot: {source: "google", kind: "proxy"}}},
+        {id: "evt_human", type: "email.opened", tracking: nil}
+      ],
+      has_more: false,
+      next_cursor: nil
+    })
+
+    page = client.events.list(event_type: "email.opened")
+
+    # The nested bot object is wrapped as a Response, reachable via both
+    # method and bracket access.
+    expect(page.data[0].tracking.bot.source).to eq("google")
+    expect(page.data[0]["tracking"]["bot"]["kind"]).to eq("proxy")
+    # A human open carries no bot classification.
+    expect(page.data[1].tracking).to be_nil
+  end
 end
