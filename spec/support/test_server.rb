@@ -4,7 +4,7 @@
 # method+path and capture each request for assertions. Multiple stubs for the
 # same path are consumed in order, which is what the retry specs rely on.
 class TestServer
-  Request = Struct.new(:method, :path, :query, :headers, :body, keyword_init: true) do
+  Request = Struct.new(:method, :path, :query, :headers, :body) do
     def json_body
       JSON.parse(body)
     end
