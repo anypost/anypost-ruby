@@ -4,6 +4,8 @@ The official Ruby gem for the [Anypost](https://anypost.com) email API.
 
 Requires Ruby 3.2+. Built on [Faraday](https://github.com/lostisland/faraday).
 
+This README covers the SDK itself: installation, idioms, and configuration. For platform concepts and the full field-level API reference, see the [Anypost documentation](https://anypost.com/docs).
+
 ## Install
 
 ```bash
@@ -24,10 +26,10 @@ require "anypost"
 client = Anypost::Client.new("ap_your_api_key")
 
 email = client.email.send(
-  from: "Acme <you@yourdomain.com>",
-  to: ["someone@example.com"],
-  subject: "Hello from Anypost",
-  html: "<p>It worked.</p>"
+  from: "YourCo <you@yourdomain.com>",
+  to: ["you@example.com"],
+  subject: "Welcome to Anypost",
+  html: "<p>Hello, inbox!</p>"
 )
 
 puts email.id
@@ -49,7 +51,7 @@ One of `text`, `html`, or `template_id` is required. All recipients in `to`, `cc
 
 ```ruby
 client.email.send(
-  from: "Acme <you@yourdomain.com>",
+  from: "YourCo <you@yourdomain.com>",
   to: ["a@example.com", "b@example.com"],
   cc: ["team@example.com"],
   reply_to: "support@yourdomain.com",
@@ -60,11 +62,11 @@ client.email.send(
 )
 ```
 
-Attachment `content` is the raw file bytes — pass what `File.binread` returns and the SDK base64-encodes it. Do not pre-encode it. The request body is capped at 5 MB.
+Attachment `content` is the raw file bytes: pass what `File.binread` returns and the SDK base64-encodes it. Do not pre-encode it. The request body is capped at 5 MB.
 
 ```ruby
 client.email.send(
-  from: "you@yourdomain.com",
+  from: "YourCo <you@yourdomain.com>",
   to: ["someone@example.com"],
   subject: "Your report",
   text: "Attached.",
@@ -78,12 +80,14 @@ Send with a published template and per-recipient variables:
 
 ```ruby
 client.email.send(
-  from: "you@yourdomain.com",
+  from: "YourCo <you@yourdomain.com>",
   to: ["someone@example.com"],
   template_id: "template_018f2c5e-3a40-7a91-9c25-3a0b1d5e6f78",
   variables: {name: "Ada", plan: "pro"}
 )
 ```
+
+See the [send reference](https://anypost.com/docs/reference/emails) for the complete field list.
 
 ## Batch
 
@@ -91,7 +95,7 @@ Send 1 to 100 independent messages in one request. `defaults` fills any field an
 
 ```ruby
 result = client.email.send_batch(
-  defaults: {from: "you@yourdomain.com"},
+  defaults: {from: "YourCo <you@yourdomain.com>"},
   emails: [
     {to: ["a@example.com"], subject: "Hi A", text: "..."},
     {to: ["b@example.com"], subject: "Hi B", text: "..."}
@@ -115,7 +119,7 @@ end
 
 ## Domains
 
-Manage sending domains under `client.domains`. Add a domain, publish the CNAMEs it returns, then verify.
+Manage sending domains under `client.domains`. Add a domain, publish the DNS records it returns, then verify.
 
 ```ruby
 domain = client.domains.create(name: "example.com")
@@ -123,21 +127,13 @@ domain = client.domains.create(name: "example.com")
 domain.dns_records.each do |record|
   puts "#{record.type} #{record.name} -> #{record.value}"
 end
-```
 
-`verify` always returns the current domain — a still-`pending` domain does not raise. Read `status` and `verification_failure`, and poll while DNS propagates.
-
-```ruby
 checked = client.domains.verify(domain.id)
+# verify returns the current domain even while pending; it does not raise
 puts checked.verification_failure.code unless checked.status == "verified"
 ```
 
-`get`, `update` (tracking config only), and `delete` round out the resource:
-
-```ruby
-client.domains.update(domain.id, tracking: {opens_enabled: true, clicks_enabled: true, subdomain: "track"})
-client.domains.delete(domain.id)
-```
+`get`, `update` (tracking config only), and `delete` round out the resource. See [Domains](https://anypost.com/docs/reference/domains) for the verification lifecycle and field reference.
 
 ## API keys
 
@@ -150,12 +146,9 @@ created = client.api_keys.create(
   allowed_domains: ["example.com"]
 )
 puts created.key # store now; never retrievable again
-
-client.api_keys.update(created.id, name: "Production server", permissions: "full")
-client.api_keys.delete(created.id)
 ```
 
-`get` returns metadata only — `key_prefix`, never the secret. Permission and restriction changes take up to 5 minutes to propagate through the gateway cache.
+`get` returns metadata only (`key_prefix`, never the secret); `update` and `delete` round out the resource. See [API keys](https://anypost.com/docs/reference/api-keys) for the permission model and cache propagation.
 
 ## Templates
 
@@ -168,30 +161,22 @@ template = client.templates.create(
   html: "<h1>Welcome, {{ name }}</h1>"
 )
 
-client.templates.update_draft(template.id, subject: "Welcome to Acme", html: "<h1>Welcome, {{ name }}</h1>")
 client.templates.publish(template.id)
 ```
 
-`kind` is `html` or `markdown` and is immutable once set. The plain-text body is always derived server-side. `get_draft`, `delete_draft`, `duplicate`, `get`, `update` (name only), and `delete` round out the resource. Send with a published template via `template_id` (see [Sending](#sending)).
+`kind` (`html` or `markdown`) is immutable once set; the plain-text body is always derived server-side. `get_draft`, `update_draft`, `delete_draft`, `duplicate`, `get`, `update` (name only), and `delete` round out the resource. Send a published template with `template_id` (see [Sending](#sending)). See [Templates](https://anypost.com/docs/reference/templates) for the full model.
 
 ## Suppressions
 
-A suppression blocks sends to an address, scoped to a `topic`. The wildcard `*` blocks every topic; a specific topic (e.g. `marketing`) leaves transactional traffic untouched. Bounces and complaints write `*` automatically.
+A suppression blocks sends to an address, scoped to a `topic`. The wildcard `*` blocks every topic; a named topic (e.g. `marketing`) leaves transactional traffic untouched.
 
 ```ruby
 client.suppressions.create(email: "alice@example.com", topic: "marketing", note: "Customer requested removal")
 
-row = client.suppressions.get("alice@example.com", "*")
 client.suppressions.delete("alice@example.com", "marketing")
 ```
 
-`list` accepts `email_contains`, `topic`, `reason`, and `origin` filters. `list_for_email` returns every row for an address across all topics; `delete_for_email` removes them all.
-
-```ruby
-client.suppressions.list(reason: "complaint").each do |s|
-  puts "#{s.email} #{s.topic} #{s.suppressed_at}"
-end
-```
+`get`, `list` (with `email_contains`, `topic`, `reason`, and `origin` filters), `list_for_email`, and `delete_for_email` round out the resource. See [Suppressions](https://anypost.com/docs/reference/suppressions) for scoping and the automatic-suppression rules for bounces and complaints.
 
 ## Webhooks
 
@@ -206,18 +191,11 @@ webhook = client.webhooks.create(
 puts webhook.signing_secret # store now; never retrievable again
 ```
 
-`update` sets the name, URL, events, and `status` together — set `status` to `"disabled"` to pause delivery, `"active"` to resume. `test` sends one synthetic `webhook.test` event and returns the outcome even when the endpoint fails. `rotate_secret` issues a new secret and keeps the previous one valid for a 24-hour grace window; `get`, `list`, and `delete` round out the resource.
-
-```ruby
-result = client.webhooks.test(webhook.id)
-puts "#{result.status_code} #{result.error}" unless result.delivered
-
-rotated = client.webhooks.rotate_secret(webhook.id)
-```
+`update`, `test`, `rotate_secret`, `get`, `list`, and `delete` round out the resource. See [Webhooks](https://anypost.com/docs/reference/webhooks) for the event catalog, status transitions, and the secret-rotation grace window.
 
 ### Verifying deliveries
 
-`Anypost::WebhookSignature.verify` is a module method — it needs the signing secret, not an API key, so call it in your handler without a client. Pass the **raw** request body (the exact bytes, before JSON parsing), the `Anypost-Signature` header, and the secret. It returns on success and raises `Anypost::WebhookVerificationError` otherwise. `Anypost::WebhookSignature.unwrap` does the same and returns the parsed delivery as a `Response`.
+`Anypost::WebhookSignature.verify` is a module method. It needs the signing secret, not an API key, so call it in your handler without a client. Pass the **raw** request body (the exact bytes, before JSON parsing), the `Anypost-Signature` header, and the secret. It returns on success and raises `Anypost::WebhookVerificationError` otherwise. `Anypost::WebhookSignature.unwrap` does the same and returns the parsed delivery as a `Response`.
 
 ```ruby
 begin
@@ -231,7 +209,7 @@ rescue Anypost::WebhookVerificationError => e
 end
 ```
 
-Reach for `verify` when something else has already parsed the body. Keep the raw bytes for the verify step, then use your parsed object once it passes — a Rack-style handler:
+Reach for `verify` when something else has already parsed the body. Keep the raw bytes for the verify step, then use your parsed object once it passes (a Rack-style handler):
 
 ```ruby
 post "/anypost" do
@@ -247,11 +225,11 @@ post "/anypost" do
 end
 ```
 
-Deliveries older than five minutes are rejected by default to bound replay; pass `tolerance_seconds:` to widen, narrow, or disable (`0`) that check. During a secret rotation the header carries a `v1=` component per active secret, and a match on any one passes — so deliveries keep verifying while you redeploy.
+Deliveries older than five minutes are rejected by default to bound replay; pass `tolerance_seconds:` to widen, narrow, or disable (`0`) that check. During a secret rotation the header carries a `v1=` component per active secret, and a match on any one passes, so deliveries keep verifying while you redeploy.
 
 ## Events
 
-`client.events.list` pages the team's event stream, newest-first. The window defaults to the last 24 hours and is clamped to your plan's retention. Events are read-only and not addressable by id — there is no `get`.
+`client.events.list` pages the team's event stream, newest-first. The window defaults to the last 24 hours and is clamped to your plan's retention. Events are read-only and not addressable by id, so there is no `get`.
 
 ```ruby
 client.events.list(event_type: "email.bounced").each do |event|
@@ -259,16 +237,11 @@ client.events.list(event_type: "email.bounced").each do |event|
 end
 ```
 
-Filter by `start`, `end`, `event_type`, `recipient`, `email_id`, `message_id`, `domain`, `topic`, `campaign`, `template_id`, and `tags`. All filters are exact-match, except `tags`, which takes an array and matches an event carrying *any* of the given tags. A filter value that matches no row returns an empty page. This is also how you backfill the gap after a webhook endpoint was disabled — page the events that occurred during the outage once it's healthy.
-
-```ruby
-# Events tagged "onboarding" OR "welcome", that also bounced.
-page = client.events.list(tags: ["onboarding", "welcome"], event_type: "email.bounced")
-```
+Filter by `start`, `end`, `event_type`, `recipient`, `email_id`, `message_id`, `domain`, `topic`, `campaign`, `template_id`, and `tags`, an array that matches an event carrying *any* of the given tags. Every other filter is exact-match. This is also how you backfill the gap after a webhook endpoint was disabled: page the events that occurred during the outage once it's healthy. See [Events](https://anypost.com/docs/reference/events) for the field reference.
 
 ## Pagination
 
-List endpoints return a `Page`. Read one page directly, or iterate it to walk every page — the client fetches each one as needed.
+List endpoints return a `Page`. Read one page directly, or iterate it to walk every page; the client fetches each one as needed.
 
 ```ruby
 page = client.domains.list(limit: 50)
