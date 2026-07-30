@@ -9,7 +9,7 @@ module Anypost
       # The window defaults to the last 24 hours and is clamped to the plan's
       # retention. Filter with `start`, `end`, `event_type`, `recipient`,
       # `email_id`, `message_id`, `domain`, `topic`, `campaign`, `template_id`,
-      # and `tags` (an array, matched with hasAny).
+      # `ip_pool`, and `tags` (an array, matched with hasAny).
       def list(params = {})
         tags = params[:tags]
         paginate("/events", {
@@ -25,6 +25,10 @@ module Anypost
           topic: params[:topic],
           campaign: params[:campaign],
           template_id: params[:template_id],
+          # Exact match against the [a-z0-9]([a-z0-9-]*[a-z0-9])? pool-name
+          # shape. A value outside it returns an empty list rather than being
+          # ignored, so a typo cannot silently widen the answer to "all pools".
+          ip_pool: params[:ip_pool],
           # Sent comma-separated (tags=a,b); the API matches with hasAny.
           tags: (tags.is_a?(Array) && !tags.empty?) ? tags.join(",") : nil
         })

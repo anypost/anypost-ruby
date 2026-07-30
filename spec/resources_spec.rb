@@ -119,6 +119,14 @@ RSpec.describe "resources" do
     expect(server.last_request.query["tags"]).to eq("welcome,onboarding")
   end
 
+  it "threads ip_pool into the events query" do
+    server.stub(:get, "/v1/events", body: {data: [], has_more: false, next_cursor: nil})
+
+    client.events.list(ip_pool: "marketing")
+
+    expect(server.last_request.query["ip_pool"]).to eq("marketing")
+  end
+
   it "exposes the bot label on a proxied open" do
     server.stub(:get, "/v1/events", body: {
       data: [
