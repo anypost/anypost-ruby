@@ -63,6 +63,50 @@ RSpec.describe Anypost::Resources::Email do
     expect(body["attachments"][0]["filename"]).to eq("hello.txt")
   end
 
+  it "sends already-encoded attachment content through unchanged" do
+    server.stub(:post, "/v1/email", status: 202, body: {id: "email_1", created_at: "now"})
+    already_encoded = ["hello world"].pack("m0")
+    client.email.send(
+      from: "a@b.com",
+      to: ["c@d.com"],
+      subject: "With file",
+      text: "see attached",
+      attachments: [
+        {filename: "hello.txt", content_base64: already_encoded, content_type: "text/plain"}
+      ]
+    )
+
+    attachment = server.last_request.json_body["attachments"][0]
+    expect(attachment["content"]).to eq(already_encoded)
+    expect(attachment["content_type"]).to eq("text/plain")
+    # The wire object carries only `content` — the input key does not leak out.
+    expect(attachment).not_to have_key("content_base64")
+  end
+
+  it "rejects an attachment that sets both content forms" do
+    expect {
+      client.email.send(
+        from: "a@b.com",
+        to: ["c@d.com"],
+        subject: "With file",
+        text: "see attached",
+        attachments: [{filename: "hello.txt", content: "hello", content_base64: "aGVsbG8="}]
+      )
+    }.to raise_error(ArgumentError, /hello\.txt.*exactly one/m)
+  end
+
+  it "rejects an attachment with no content" do
+    expect {
+      client.email.send(
+        from: "a@b.com",
+        to: ["c@d.com"],
+        subject: "With file",
+        text: "see attached",
+        attachments: [{filename: "empty.txt"}]
+      )
+    }.to raise_error(ArgumentError, /empty\.txt.*no content/m)
+  end
+
   it "does not raise on a 207 batch and exposes each entry" do
     server.stub(:post, "/v1/email/batch", status: 207, body: {
       summary: {total: 2, queued: 1, failed: 1},

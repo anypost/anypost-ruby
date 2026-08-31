@@ -4,8 +4,12 @@ module Anypost
   module Resources
     # Operations on the `/email` endpoints.
     #
-    # Attachment `content` is the raw file bytes (e.g. from `File.binread`); the
-    # SDK base64-encodes it for transport. Do not pre-encode it.
+    # Give each attachment its content exactly one of two ways: `content` for raw
+    # file bytes (e.g. from `File.binread`), which the SDK base64-encodes for
+    # transport, or `content_base64` for content that is already base64 at rest,
+    # which is sent through verbatim so nothing is decoded just to be re-encoded.
+    # Ruby has no type-level distinction between the two — both are Strings — so
+    # the key you choose is the signal.
     class Email < Base
       # Send a single message.
       #
@@ -35,13 +39,30 @@ module Anypost
         return message unless attachments.is_a?(Array)
 
         message = message.dup
-        message[:attachments] = attachments.map do |attachment|
-          content = attachment[:content]
-          next attachment unless content.is_a?(String)
-
-          attachment.merge(content: [content].pack("m0"))
-        end
+        message[:attachments] = attachments.map { |attachment| encode_attachment(attachment) }
         message
+      end
+
+      # Collapse an attachment's two possible content keys onto the single
+      # base64 `content` field the API takes.
+      def encode_attachment(attachment)
+        return attachment unless attachment.is_a?(Hash)
+
+        raw = attachment[:content]
+        encoded = attachment[:content_base64]
+
+        if raw && encoded
+          raise ArgumentError,
+            "attachment #{attachment[:filename].inspect} sets both :content and " \
+            ":content_base64; set exactly one"
+        end
+
+        return attachment.except(:content_base64).merge(content: encoded) if encoded
+        return attachment.merge(content: [raw].pack("m0")) if raw.is_a?(String)
+
+        raise ArgumentError,
+          "attachment #{attachment[:filename].inspect} has no content; set :content " \
+          "(raw bytes) or :content_base64"
       end
     end
   end
