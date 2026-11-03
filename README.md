@@ -174,7 +174,14 @@ A suppression blocks sends to an address, scoped to a `topic`. The wildcard `*` 
 client.suppressions.create(email: "alice@example.com", topic: "marketing", note: "Customer requested removal")
 
 client.suppressions.delete("alice@example.com", "marketing")
+
+client.suppressions.create_batch([
+  {email: "bob@example.com"},
+  {email: "carol@example.com", topic: "marketing", reason: "unsubscribed"}
+])
 ```
+
+`create_batch` takes up to 1,000 items per call and returns `imported`, `already_suppressed`, and `invalid`. Existing entries are left unchanged, so retrying a batch is safe, and invalid addresses are reported in `invalid` instead of failing the call. A batch that would pass your team's suppression limit raises a validation error and adds nothing. Suppressions do not expire.
 
 `get`, `list` (with `email_contains`, `topic`, `reason`, and `origin` filters), `list_for_email`, and `delete_for_email` round out the resource. See [Suppressions](https://anypost.com/docs/reference/suppressions) for scoping and the automatic-suppression rules for bounces and complaints.
 

@@ -100,6 +100,27 @@ RSpec.describe "resources" do
     expect(server.last_request.method).to eq(:delete)
   end
 
+  it "adds suppressions in a batch and parses invalid entries" do
+    server.stub(:post, "/v1/suppressions/batch", body: {
+      imported: 1, already_suppressed: 0, invalid: [{index: 1, email: "not-an-address"}]
+    })
+
+    result = client.suppressions.create_batch([
+      {email: "a@b.com", reason: "hard bounce"},
+      {email: "not-an-address"}
+    ])
+
+    expect(server.last_request.method).to eq(:post)
+    expect(server.last_request.path).to eq("/v1/suppressions/batch")
+    expect(server.last_request.json_body).to eq(
+      "suppressions" => [{"email" => "a@b.com", "reason" => "hard bounce"}, {"email" => "not-an-address"}]
+    )
+    expect(result.imported).to eq(1)
+    expect(result.already_suppressed).to eq(0)
+    expect(result.invalid.first.index).to eq(1)
+    expect(result.invalid.first.email).to eq("not-an-address")
+  end
+
   it "lists every suppression for an email" do
     server.stub(:get, "/v1/suppressions/a%40b.com", body: {
       data: [{email: "a@b.com", topic: "*"}, {email: "a@b.com", topic: "news"}]
